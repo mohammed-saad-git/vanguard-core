@@ -1,0 +1,6 @@
+{
+  "name": "Vanguard-Core",
+  "description": "Advanced GenAI Command & Control Orchestrator for the FIFA World Cup 2026 stadium operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
