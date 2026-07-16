@@ -1,6 +1,7 @@
-import React from "react";
+import React, { KeyboardEvent, useMemo } from "react";
+import { Shield, AlertTriangle, Users } from "lucide-react";
+import { getPolygonCentroid } from "../lib/orchestration";
 import { StadiumSector } from "../types";
-import { Shield, AlertTriangle, Users, Volume2 } from "lucide-react";
 
 interface StadiumMapProps {
   sectors: StadiumSector[];
@@ -15,22 +16,38 @@ export default function StadiumMap({
   rerouteToIds = [],
   onSelectSector
 }: StadiumMapProps) {
-  
-  // Dynamic color map for crowd densities
+  const centroidBySectorId = useMemo(
+    () => new Map(sectors.map((sector) => [sector.id, getPolygonCentroid(sector.coordinates)])),
+    [sectors]
+  );
+
+  const sectorById = useMemo(
+    () => new Map(sectors.map((sector) => [sector.id, sector])),
+    [sectors]
+  );
+
+  const handleSectorKeyDown = (event: KeyboardEvent<SVGGElement | HTMLButtonElement>, sector: StadiumSector) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelectSector?.(sector);
+    }
+  };
+
   const getDensityColor = (density: string, isActive: boolean) => {
     if (isActive) {
       return "fill-rose-600/90 stroke-white stroke-2 animate-pulse";
     }
+
     switch (density) {
       case "Critical":
-        return "fill-red-500/85 stroke-red-600 hover:fill-red-600/90 transition-all";
+        return "fill-red-500/85 stroke-red-600 group-hover:fill-red-600/90 transition-all";
       case "High":
-        return "fill-amber-500/85 stroke-amber-600 hover:fill-amber-600/90 transition-all";
+        return "fill-amber-500/85 stroke-amber-600 group-hover:fill-amber-600/90 transition-all";
       case "Medium":
-        return "fill-yellow-400/85 stroke-yellow-500 hover:fill-yellow-500/90 transition-all";
+        return "fill-yellow-400/85 stroke-yellow-500 group-hover:fill-yellow-500/90 transition-all";
       case "Low":
       default:
-        return "fill-emerald-500/80 stroke-emerald-600 hover:fill-emerald-600/90 transition-all";
+        return "fill-emerald-500/80 stroke-emerald-600 group-hover:fill-emerald-600/90 transition-all";
     }
   };
 
@@ -49,76 +66,71 @@ export default function StadiumMap({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl relative overflow-hidden" id="stadium-map-component">
-      {/* Map Header */}
+    <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl relative overflow-hidden" id="stadium-map-component" aria-labelledby="stadium-map-heading">
       <div className="flex flex-wrap justify-between items-center mb-4 pb-3 border-b border-slate-800 gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+          <h2 id="stadium-map-heading" className="text-sm font-semibold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" aria-hidden="true" />
             Telemetry Grid Map (Live Sector Densities)
-          </h3>
+          </h2>
           <p className="text-xs text-slate-400 mt-0.5">Click any sector to ingest telemetry or view status.</p>
         </div>
-        
-        {/* Legends */}
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-emerald-500"></span>
-            <span className="text-slate-400">Low</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-yellow-400"></span>
-            <span className="text-slate-400">Med</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-amber-500"></span>
-            <span className="text-slate-400">High</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded bg-red-500"></span>
-            <span className="text-slate-400">Critical</span>
-          </div>
+
+        <div className="flex items-center gap-3 text-xs" aria-label="Crowd density legend">
+          {[
+            ["Low", "bg-emerald-500"],
+            ["Med", "bg-yellow-400"],
+            ["High", "bg-amber-500"],
+            ["Critical", "bg-red-500"]
+          ].map(([label, color]) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded ${color}`} aria-hidden="true" />
+              <span className="text-slate-400">{label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Main Grid View */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
-        {/* Interactive SVG Map */}
         <div className="lg:col-span-3 flex justify-center items-center bg-slate-950 p-4 rounded-xl border border-slate-800/60 relative">
-          
-          {/* Compass/Grid lines HUD */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]"></div>
+          <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]" />
           <div className="absolute top-2 left-2 pointer-events-none text-[9px] font-mono text-cyan-500/60 uppercase">
             STAD-C2 // COORD_MATCH: 2026.0
           </div>
-          
+
           <svg
             viewBox="0 0 300 220"
+            role="img"
+            aria-labelledby="stadium-svg-title stadium-svg-desc"
             className="w-full max-w-[340px] h-auto drop-shadow-[0_0_15px_rgba(15,23,42,0.6)]"
           >
-            {/* Outer Pitch Oval ring */}
+            <title id="stadium-svg-title">Interactive stadium sector density map</title>
+            <desc id="stadium-svg-desc">Eight stadium sectors color coded by crowd density. Select a sector to ingest telemetry.</desc>
             <ellipse cx="150" cy="110" rx="135" ry="95" fill="none" stroke="#334155" strokeWidth="2" strokeDasharray="3,3" />
-            
-            {/* Inner Pitch (Playing Field) */}
             <rect x="90" y="65" width="120" height="90" rx="4" fill="#0f172a" stroke="#1e293b" strokeWidth="2" />
             <ellipse cx="150" cy="110" rx="20" ry="20" fill="none" stroke="#1e293b" strokeWidth="1.5" />
             <line x1="150" y1="65" x2="150" y2="155" stroke="#1e293b" strokeWidth="1.5" />
 
-            {/* Stadium Sectors (Polygons) */}
             {sectors.map((sector) => {
               const isActive = activeSectorId === sector.id;
               const isTargetReroute = rerouteToIds.includes(sector.id);
-              
+              const centroid = centroidBySectorId.get(sector.id) ?? { x: 150, y: 110 };
+
               return (
-                <g key={sector.id} className="cursor-pointer group">
-                  {/* Sector Shape */}
+                <g
+                  key={sector.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${sector.name}: ${sector.density} density, ${sector.currentCount} of ${sector.capacity} spectators`}
+                  onClick={() => onSelectSector?.(sector)}
+                  onKeyDown={(event) => handleSectorKeyDown(event, sector)}
+                  className="cursor-pointer group focus:outline-none"
+                >
                   <polygon
                     points={sector.coordinates}
-                    className={`${getDensityColor(sector.density, isActive)} stroke-[1.2] transition-colors`}
-                    onClick={() => onSelectSector && onSelectSector(sector)}
+                    className={`${getDensityColor(sector.density, isActive)} stroke-[1.2] transition-colors group-focus-visible:stroke-cyan-200 group-focus-visible:stroke-[3]`}
                   />
-                  
-                  {/* Highlight outline for targeted reroute adjacent sectors */}
+
                   {isTargetReroute && (
                     <polygon
                       points={sector.coordinates}
@@ -131,13 +143,13 @@ export default function StadiumMap({
                     />
                   )}
 
-                  {/* Inner text for Sector Number */}
                   <text
-                    x={getCentroidX(sector.coordinates)}
-                    y={getCentroidY(sector.coordinates)}
-                    className={`text-[8px] font-bold font-mono text-slate-900 pointer-events-none text-center select-none`}
+                    x={centroid.x}
+                    y={centroid.y}
+                    className="text-[8px] font-bold font-mono text-slate-900 pointer-events-none text-center select-none"
                     textAnchor="middle"
                     alignmentBaseline="middle"
+                    aria-hidden="true"
                   >
                     {sector.id.replace("sec-", "")}
                   </text>
@@ -145,37 +157,29 @@ export default function StadiumMap({
               );
             })}
 
-            {/* Visual Re-routing arrows pointing from active/incident sector to target reroutes */}
             {activeSectorId && rerouteToIds.length > 0 && (
-              <g className="pointer-events-none">
+              <g className="pointer-events-none" aria-hidden="true">
                 {rerouteToIds.map((targetId) => {
-                  const activeSector = sectors.find(s => s.id === activeSectorId);
-                  const targetSector = sectors.find(s => s.id === targetId);
+                  const activeSector = sectorById.get(activeSectorId);
+                  const targetSector = sectorById.get(targetId);
                   if (!activeSector || !targetSector) return null;
-                  
-                  const startX = getCentroidX(activeSector.coordinates);
-                  const startY = getCentroidY(activeSector.coordinates);
-                  const endX = getCentroidX(targetSector.coordinates);
-                  const endY = getCentroidY(targetSector.coordinates);
-                  
+
+                  const start = centroidBySectorId.get(activeSector.id) ?? { x: 150, y: 110 };
+                  const end = centroidBySectorId.get(targetSector.id) ?? { x: 150, y: 110 };
+
                   return (
                     <g key={`arrow-${targetId}`}>
-                      {/* Flowing animated dash line */}
                       <line
-                        x1={startX}
-                        y1={startY}
-                        x2={endX}
-                        y2={endY}
+                        x1={start.x}
+                        y1={start.y}
+                        x2={end.x}
+                        y2={end.y}
                         stroke="#06b6d4"
                         strokeWidth="2"
                         strokeDasharray="4,4"
                         className="animate-[dash_1s_linear_infinite]"
-                        style={{
-                          strokeDasharray: "4 4",
-                        }}
                       />
-                      {/* Arrow circle indicator */}
-                      <circle cx={endX} cy={endY} r="3" fill="#22d3ee" className="animate-ping" />
+                      <circle cx={end.x} cy={end.y} r="3" fill="#22d3ee" className="animate-ping" />
                     </g>
                   );
                 })}
@@ -184,96 +188,73 @@ export default function StadiumMap({
           </svg>
         </div>
 
-        {/* Info panel */}
         <div className="lg:col-span-2 flex flex-col justify-between h-full space-y-4">
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-              <Users size={12} className="text-cyan-400" />
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+              <Users size={12} className="text-cyan-400" aria-hidden="true" />
               Sector Grid Analysis
-            </h4>
-            
-            {/* List Sectors with Status and capacity metrics */}
-            <div className="max-h-[170px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-              {sectors.map((sec) => {
-                const isActive = activeSectorId === sec.id;
-                const percentFull = Math.min(100, Math.round((sec.currentCount / sec.capacity) * 100));
-                
+            </h3>
+
+            <div className="max-h-[170px] overflow-y-auto space-y-2 pr-1 custom-scrollbar" aria-label="Sector status list">
+              {sectors.map((sector) => {
+                const isActive = activeSectorId === sector.id;
+                const percentFull = Math.min(100, Math.round((sector.currentCount / sector.capacity) * 100));
+
                 return (
-                  <div
-                    key={sec.id}
-                    onClick={() => onSelectSector && onSelectSector(sec)}
-                    className={`p-2 rounded-lg border text-xs cursor-pointer transition-all flex justify-between items-center ${
+                  <button
+                    key={sector.id}
+                    type="button"
+                    onClick={() => onSelectSector?.(sector)}
+                    onKeyDown={(event) => handleSectorKeyDown(event, sector)}
+                    className={`w-full p-2 rounded-lg border text-xs cursor-pointer transition-all flex justify-between items-center text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${
                       isActive
                         ? "bg-rose-500/10 border-rose-500/50 text-rose-100 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
                         : "bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-300"
                     }`}
+                    aria-current={isActive ? "true" : undefined}
                   >
-                    <div>
-                      <div className="font-semibold flex items-center gap-1">
-                        <span>{sec.name}</span>
+                    <span>
+                      <span className="font-semibold flex items-center gap-1">
+                        <span>{sector.name}</span>
                         {isActive && <span className="text-[10px] bg-red-500 text-white font-bold px-1.5 py-0.2 rounded uppercase tracking-wider animate-pulse">Affected</span>}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {sec.currentCount.toLocaleString()} / {sec.capacity.toLocaleString()} spectators ({percentFull}% Cap)
-                      </div>
-                    </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getDensityBadgeColor(sec.density)}`}>
-                      {sec.density}
+                      </span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">
+                        {sector.currentCount.toLocaleString()} / {sector.capacity.toLocaleString()} spectators ({percentFull}% Cap)
+                      </span>
                     </span>
-                  </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getDensityBadgeColor(sector.density)}`}>
+                      {sector.density}
+                    </span>
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Action Callout based on Map State */}
           <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs">
             {activeSectorId ? (
               <div className="space-y-1.5">
                 <div className="text-cyan-400 font-bold flex items-center gap-1">
-                  <Shield size={12} className="animate-spin text-cyan-400" />
+                  <Shield size={12} className="animate-spin text-cyan-400" aria-hidden="true" />
                   GEN-AI REROUTING ENGAGED
                 </div>
                 <p className="text-slate-300 leading-relaxed text-[11px]">
-                  Vanguard-Core is re-directing crowd movement away from{" "}
+                  Vanguard-Core is redirecting crowd movement away from{" "}
                   <span className="font-bold text-red-400">
-                    {sectors.find(s => s.id === activeSectorId)?.name || "the incident zone"}
+                    {sectorById.get(activeSectorId)?.name || "the incident zone"}
                   </span>{" "}
-                  towards adjacent open paths (highlighted on map).
+                  toward adjacent open paths highlighted on the map.
                 </p>
               </div>
             ) : (
               <div className="text-slate-400 flex items-start gap-1.5 leading-relaxed text-[11px]">
-                <AlertTriangle size={14} className="text-slate-500 shrink-0 mt-0.5" />
-                <span>
-                  No active stadium incidents selected. Select a preset scenario below or click a sector to initiate.
-                </span>
+                <AlertTriangle size={14} className="text-slate-500 shrink-0 mt-0.5" aria-hidden="true" />
+                <span>No active stadium incidents selected. Select a preset scenario below or click a sector to initiate.</span>
               </div>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
-}
-
-// Utility functions to approximate centroids of SVG coordinate strings
-function getCentroidX(coordinates: string): number {
-  try {
-    const coords = coordinates.split(" ").map(pt => pt.split(",").map(Number));
-    const sumX = coords.reduce((sum, pt) => sum + pt[0], 0);
-    return Math.round(sumX / coords.length);
-  } catch (e) {
-    return 150;
-  }
-}
-
-function getCentroidY(coordinates: string): number {
-  try {
-    const coords = coordinates.split(" ").map(pt => pt.split(",").map(Number));
-    const sumY = coords.reduce((sum, pt) => sum + pt[1], 0);
-    return Math.round(sumY / coords.length);
-  } catch (e) {
-    return 110;
-  }
 }
