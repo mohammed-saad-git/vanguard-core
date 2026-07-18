@@ -1,52 +1,75 @@
-import React, { useMemo, useState } from "react";
-import { AlertTriangle, Info, Award } from "lucide-react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { Info } from "lucide-react";
 import Header from "./components/Header";
 import PresetScenarios from "./components/PresetScenarios";
 import TelemetryForm from "./components/TelemetryForm";
 import IncidentAuditTrail from "./components/IncidentAuditTrail";
 import StadiumMap from "./components/StadiumMap";
-import BroadcastSimulator from "./components/BroadcastSimulator";
-import { INITIAL_SECTORS, SCENARIO_PRESETS, INITIAL_HISTORY } from "./data";
+import ActionResultsPanel from "./components/ActionResultsPanel";
 import {
   createSimulationResult,
   getRerouteSectorIds,
+  getPriorityBadgeClass,
   resolveAffectedSectorId,
   updateSectorDensityById
-} from "./lib/orchestration";
-import { StadiumSector, IncidentHistoryItem, IncidentResult } from "./types";
+} from "./lib";
+import type { ScenarioPreset, IncidentHistoryItem, IncidentResult, StadiumSector, CrowdDensity, BroadcastLanguage } from "./types";
+import { INITIAL_HISTORY, INITIAL_SECTORS, SCENARIO_PRESETS } from "./data";
 
-type BroadcastLanguage = "english" | "spanish" | "localized_team_language";
-type CrowdDensity = StadiumSector["density"];
+const FALLBACK_ERROR_MESSAGE =
+  "Please provide telemetry or a text description of the stadium incident report.";
+
+interface ActiveIncidentInput {
+  stadium_name: string;
+  current_match_phase: string;
+  incident_report: string;
+  current_crowd_density_level: CrowdDensity;
+  playing_teams: string;
+}
 
 export default function App() {
   const [sectors, setSectors] = useState<StadiumSector[]>(INITIAL_SECTORS);
   const [history, setHistory] = useState<IncidentHistoryItem[]>(INITIAL_HISTORY);
 
-  const [stadiumName, setStadiumName] = useState(SCENARIO_PRESETS[0].stadium_name);
-  const [currentMatchPhase, setCurrentMatchPhase] = useState(SCENARIO_PRESETS[0].current_match_phase);
-  const [incidentReport, setIncidentReport] = useState("");
+  const [stadiumName, setStadiumName] = useState<string>(SCENARIO_PRESETS[0].stadium_name);
+  const [currentMatchPhase, setCurrentMatchPhase] = useState<string>(SCENARIO_PRESETS[0].current_match_phase);
+  const [incidentReport, setIncidentReport] = useState<string>("");
   const [currentCrowdDensity, setCurrentCrowdDensity] = useState<CrowdDensity>("Medium");
-  const [playingTeams, setPlayingTeams] = useState(SCENARIO_PRESETS[0].playing_teams);
+  const [playingTeams, setPlayingTeams] = useState<string>(SCENARIO_PRESETS[0].playing_teams);
 
   const [activeIncident, setActiveIncident] = useState<IncidentHistoryItem | null>(INITIAL_HISTORY[0]);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [broadcastLanguage, setBroadcastLanguage] = useState<BroadcastLanguage>("english");
 
-  const updateSectorDensity = (sectorId: string, density: CrowdDensity) => {
+  const updateSectorDensity = useCallback((sectorId: string, density: CrowdDensity) => {
     setSectors((prev) => updateSectorDensityById(prev, sectorId, density));
-  };
+  }, []);
 
-  const handleSelectPreset = (preset: typeof SCENARIO_PRESETS[0]) => {
-    setStadiumName(preset.stadium_name);
-    setCurrentMatchPhase(preset.current_match_phase);
-    setIncidentReport(preset.incident_report);
-    setCurrentCrowdDensity(preset.current_crowd_density_level);
-    setPlayingTeams(preset.playing_teams);
-    updateSectorDensity(resolveAffectedSectorId(preset.incident_report), preset.current_crowd_density_level);
-  };
+  const buildCurrentInput = useCallback(
+    (): ActiveIncidentInput => ({
+      stadium_name: stadiumName,
+      current_match_phase: currentMatchPhase,
+      incident_report: incidentReport,
+      current_crowd_density_level: currentCrowdDensity,
+      playing_teams: playingTeams
+    }),
+    [stadiumName, currentMatchPhase, incidentReport, currentCrowdDensity, playingTeams]
+  );
 
-  const handleSelectSector = (sector: StadiumSector) => {
+  const handleSelectPreset = useCallback(
+    (preset: ScenarioPreset) => {
+      setStadiumName(preset.stadium_name);
+      setCurrentMatchPhase(preset.current_match_phase);
+      setIncidentReport(preset.incident_report);
+      setCurrentCrowdDensity(preset.current_crowd_density_level);
+      setPlayingTeams(preset.playing_teams);
+      updateSectorDensity(resolveAffectedSectorId(preset.incident_report), preset.current_crowd_density_level);
+    },
+    [updateSectorDensity]
+  );
+
+  const handleSelectSector = useCallback((sector: StadiumSector) => {
     setCurrentCrowdDensity(sector.density);
     setIncidentReport((prev) => {
       const base = `Critical monitoring report for ${sector.name}. Sector capacity state is currently ${sector.density} density with ${sector.currentCount.toLocaleString()} spectators. `;
@@ -56,76 +79,68 @@ export default function App() {
     if (activeIncident) {
       setActiveIncident(null);
     }
-  };
+  }, [activeIncident]);
 
-  const buildCurrentInput = () => ({
-    stadium_name: stadiumName,
-    current_match_phase: currentMatchPhase,
-    incident_report: incidentReport,
-    current_crowd_density_level: currentCrowdDensity,
-    playing_teams: playingTeams
-  });
+  const addHistoryItem = useCallback(
+    (result: IncidentResult, status: IncidentHistoryItem["status"], input: ActiveIncidentInput) => {
+      const newHistoryItem: IncidentHistoryItem = {
+        id: `hist-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        input,
+        result,
+        status
+      };
 
-  const addHistoryItem = (
-    result: IncidentResult,
-    status: IncidentHistoryItem["status"],
-    input = buildCurrentInput()
-  ) => {
-    const newHistoryItem: IncidentHistoryItem = {
-      id: `hist-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      input,
-      result,
-      status
-    };
+      setHistory((prev) => [newHistoryItem, ...prev]);
+      setActiveIncident(newHistoryItem);
+      setBroadcastLanguage("english");
+      updateSectorDensity(resolveAffectedSectorId(input.incident_report), input.current_crowd_density_level);
+    },
+    [updateSectorDensity]
+  );
 
-    setHistory((prev) => [newHistoryItem, ...prev]);
-    setActiveIncident(newHistoryItem);
-    setBroadcastLanguage("english");
-    updateSectorDensity(resolveAffectedSectorId(input.incident_report), input.current_crowd_density_level);
-  };
-
-  const handleTriggerOrchestration = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!incidentReport.trim()) {
-      setErrorMsg("Please provide telemetry or a text description of the stadium incident report.");
-      return;
-    }
-
-    setIsOrchestrating(true);
-    setErrorMsg(null);
-
-    const input = buildCurrentInput();
-
-    try {
-      const response = await fetch("/api/orchestrate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(input)
-      });
-
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server returned HTTP state ${response.status}`);
+  const handleTriggerOrchestration = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      if (!incidentReport.trim()) {
+        setErrorMsg(FALLBACK_ERROR_MESSAGE);
+        return;
       }
 
-      const responseData = await response.json();
-      if (responseData.error) {
-        throw new Error(responseData.error);
+      setIsOrchestrating(true);
+      setErrorMsg(null);
+
+      const input = buildCurrentInput();
+
+      try {
+        const response = await fetch("/api/orchestrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input)
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.error || `Server returned HTTP state ${response.status}`);
+        }
+
+        const responseData = await response.json();
+        if (responseData.error) {
+          throw new Error(responseData.error);
+        }
+
+        addHistoryItem(responseData.data as IncidentResult, responseData.status || "success", input);
+      } catch (error: unknown) {
+        console.warn("Backend API not reachable. Switching to client-side fallback simulation...", error);
+        addHistoryItem(createSimulationResult(input), "simulation", input);
+      } finally {
+        setIsOrchestrating(false);
       }
+    },
+    [incidentReport, buildCurrentInput, addHistoryItem]
+  );
 
-      addHistoryItem(responseData.data as IncidentResult, responseData.status || "success", input);
-    } catch (error: unknown) {
-      console.warn("Backend API not reachable. Switching to client-side fallback simulation...", error);
-      addHistoryItem(createSimulationResult(input), "simulation", input);
-    } finally {
-      setIsOrchestrating(false);
-    }
-  };
-
-  const handleRestoreHistory = (item: IncidentHistoryItem) => {
+  const handleRestoreHistory = useCallback((item: IncidentHistoryItem) => {
     setActiveIncident(item);
     setStadiumName(item.input.stadium_name);
     setCurrentMatchPhase(item.input.current_match_phase);
@@ -133,11 +148,11 @@ export default function App() {
     setCurrentCrowdDensity(item.input.current_crowd_density_level);
     setPlayingTeams(item.input.playing_teams);
     setBroadcastLanguage("english");
-  };
+  }, []);
 
-  const { activeId: mapActiveSectorId, reroutes: mapRerouteToIds } = useMemo(() => {
+  const mapState = useMemo(() => {
     if (!activeIncident) {
-      return { activeId: undefined, reroutes: [] };
+      return { activeId: undefined, reroutes: [] as string[] };
     }
 
     const incidentText = `${activeIncident.input.incident_report} ${activeIncident.result.tactical_action_plan.crowd_flow_instruction}`;
@@ -148,31 +163,9 @@ export default function App() {
     };
   }, [activeIncident, sectors]);
 
-  const getPriorityBadgeClass = (priority: number) => {
-    switch (priority) {
-      case 1:
-        return "bg-red-500/20 text-red-400 border-red-500/50 ring-2 ring-red-500/20";
-      case 2:
-        return "bg-amber-500/20 text-amber-400 border-amber-500/50";
-      case 3:
-        return "bg-yellow-500/20 text-yellow-300 border-yellow-500/40";
-      default:
-        return "bg-cyan-500/20 text-cyan-400 border-cyan-500/40";
-    }
-  };
-
-  const getPriorityLabel = (priority: number) => {
-    switch (priority) {
-      case 1:
-        return "1 - Critical Emergency";
-      case 2:
-        return "2 - High Hazard";
-      case 3:
-        return "3 - Medium Risk";
-      default:
-        return "4 - Routine Inconvenience";
-    }
-  };
+  const handleBroadcastLanguageChange = useCallback((language: BroadcastLanguage) => {
+    setBroadcastLanguage(language);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-rose-600/30 selection:text-white antialiased">
@@ -206,125 +199,16 @@ export default function App() {
         <div className="lg:col-span-7 flex flex-col space-y-6">
           <StadiumMap
             sectors={sectors}
-            activeSectorId={mapActiveSectorId}
-            rerouteToIds={mapRerouteToIds}
+            activeSectorId={mapState.activeId}
+            rerouteToIds={mapState.reroutes}
             onSelectSector={handleSelectSector}
           />
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl relative overflow-hidden" id="orchestrated-results-panel" aria-labelledby="results-heading">
-            {activeIncident?.result.severity_assessment.priority_level === 1 && (
-              <div className="absolute top-0 right-0 w-48 h-48 bg-rose-500/5 blur-3xl rounded-full pointer-events-none" />
-            )}
-
-            <div className="flex flex-wrap justify-between items-center pb-3 border-b border-slate-800 mb-4 gap-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-                <h2 id="results-heading" className="text-xs font-bold text-slate-200 uppercase tracking-widest">
-                  Live Action Command Protocol
-                </h2>
-              </div>
-              {activeIncident && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-                    ID: {activeIncident.result.incident_id}
-                  </span>
-                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
-                    activeIncident.status === "simulation" ? "bg-amber-500/10 text-amber-400 border-amber-500/30" : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
-                  }`}>
-                    {activeIncident.status === "simulation" ? "Offline Simulation" : "Live Gen-AI Producer"}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {activeIncident ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950 p-3 rounded-lg border border-slate-800">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Severity Priority</span>
-                    <span className={`text-xs font-extrabold px-2 py-0.5 rounded border block text-center ${getPriorityBadgeClass(activeIncident.result.severity_assessment.priority_level)}`}>
-                      {getPriorityLabel(activeIncident.result.severity_assessment.priority_level)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Urgency State</span>
-                    <span className="text-xs font-bold text-slate-200 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded block text-center">
-                      {activeIncident.result.severity_assessment.urgency}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Impact Radius</span>
-                    <span className="text-xs font-bold text-slate-200 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded block text-center">
-                      {activeIncident.result.severity_assessment.impact_radius}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
-                      Tactical Dispatch Directives:
-                    </span>
-                    <div className="space-y-1">
-                      {activeIncident.result.tactical_action_plan.immediate_directives.map((directive, index) => (
-                        <div key={`${directive}-${index}`} className="flex items-start gap-2 bg-slate-950/40 p-2.5 rounded border border-slate-800 text-xs">
-                          <span className="text-rose-500 font-mono font-bold mt-0.5 shrink-0">0{index + 1}.</span>
-                          <p className="text-slate-300 leading-relaxed font-mono">{directive}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-lg space-y-1.5">
-                      <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest block font-bold">
-                        Ground Volunteers Assignment:
-                      </span>
-                      <p className="text-xs text-slate-300 leading-relaxed font-mono">
-                        {activeIncident.result.tactical_action_plan.staff_dispatch_assignment}
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-lg space-y-1.5">
-                      <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest block font-bold">
-                        Crowd Flow Instruction:
-                      </span>
-                      <p className="text-xs text-slate-300 leading-relaxed font-mono">
-                        {activeIncident.result.tactical_action_plan.crowd_flow_instruction}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <BroadcastSimulator
-                  broadcasts={activeIncident.result.automated_broadcasts}
-                  activeLanguage={broadcastLanguage}
-                  onChangeLanguage={(language) => setBroadcastLanguage(language)}
-                  stadiumName={activeIncident.input.stadium_name}
-                />
-
-                <div className="bg-rose-500/[0.03] border border-rose-500/10 p-3.5 rounded-lg text-xs leading-relaxed">
-                  <div className="font-mono text-rose-400 uppercase tracking-wider text-[10px] font-bold mb-1 flex items-center gap-1.5">
-                    <Info size={12} className="text-rose-400" aria-hidden="true" />
-                    Operational Security Justification (Stadium Physics Rule-base):
-                  </div>
-                  <p className="text-slate-300 font-mono text-[11px]">
-                    {activeIncident.result.operational_justification}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center py-12 px-4 border border-dashed border-slate-800 rounded-lg bg-slate-950/20">
-                <AlertTriangle size={32} className="text-slate-600 mb-2 animate-bounce" aria-hidden="true" />
-                <h3 className="text-sm font-bold text-slate-300 font-mono uppercase">Vanguard Command System Offline</h3>
-                <p className="text-xs text-slate-500 max-w-sm mt-1 leading-relaxed">
-                  Ingest stadium raw data on the left panel or click one of the presets to generate a GenAI response.
-                </p>
-              </div>
-            )}
-          </section>
+          <ActionResultsPanel
+            activeIncident={activeIncident}
+            broadcastLanguage={broadcastLanguage}
+            onChangeBroadcastLanguage={handleBroadcastLanguageChange}
+          />
         </div>
       </main>
 
@@ -340,7 +224,7 @@ export default function App() {
           <div className="flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-500 font-mono gap-2">
             <span>Copyright 2026 FIFA World Cup Stadium Logistics Division - Vanguard-Core Orchestrator v2.0.0</span>
             <span className="flex items-center gap-1">
-              <Award size={10} className="text-rose-500" aria-hidden="true" />
+              <Info size={10} className="text-rose-500" aria-hidden="true" />
               Ingress and Egress Safety Compliant Model
             </span>
           </div>

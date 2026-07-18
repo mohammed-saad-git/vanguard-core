@@ -1,14 +1,15 @@
-import React from "react";
+import { memo } from "react";
 import { Sparkles, ChevronRight } from "lucide-react";
 import { SCENARIO_PRESETS } from "../data";
+import type { CrowdDensity, ScenarioPreset } from "../types";
 
 interface PresetScenariosProps {
   stadiumName: string;
-  currentCrowdDensity: string;
-  onSelectPreset: (preset: typeof SCENARIO_PRESETS[0]) => void;
+  currentCrowdDensity: CrowdDensity;
+  onSelectPreset: (preset: ScenarioPreset) => void;
 }
 
-export default function PresetScenarios({
+const PresetScenarios = memo(function PresetScenarios({
   stadiumName,
   currentCrowdDensity,
   onSelectPreset
@@ -25,7 +26,6 @@ export default function PresetScenarios({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {SCENARIO_PRESETS.map((preset) => {
           const isMatch = stadiumName === preset.stadium_name && currentCrowdDensity === preset.current_crowd_density_level;
-
           return (
             <button
               key={preset.title}
@@ -52,4 +52,6 @@ export default function PresetScenarios({
       </div>
     </section>
   );
-}
+});
+
+export default PresetScenarios;

@@ -1,6 +1,6 @@
-import { StadiumSector, IncidentHistoryItem } from "./types";
+import { IncidentHistoryItem, ScenarioPreset, Stadium, StadiumSector, TeamPreset } from "./types";
 
-export const STADIUMS = [
+export const STADIUMS: readonly Stadium[] = [
   { id: "metlife", name: "MetLife Stadium", city: "East Rutherford, NJ", capacity: 82500 },
   { id: "sofi", name: "Los Angeles Stadium", city: "Inglewood, CA", capacity: 70000 },
   { id: "mercedes", name: "Atlanta Stadium", city: "Atlanta, GA", capacity: 71000 },
@@ -8,7 +8,7 @@ export const STADIUMS = [
   { id: "bmo", name: "Toronto Stadium", city: "Toronto, ON", capacity: 45000 }
 ];
 
-export const MATCH_PHASES = [
+export const MATCH_PHASES: readonly string[] = [
   "Pre-match ingress",
   "1st Half - 15th Minute",
   "Half-time",
@@ -18,7 +18,7 @@ export const MATCH_PHASES = [
 
 export const CROWD_DENSITIES = ["Low", "Medium", "High", "Critical"] as const;
 
-export const TEAM_PRESETS = [
+export const TEAM_PRESETS: readonly TeamPreset[] = [
   { teams: "USA vs Mexico", languages: "English, Spanish" },
   { teams: "Mexico vs Germany", languages: "Spanish, German, English" },
   { teams: "Argentina vs France", languages: "Spanish, French, English" },
@@ -38,13 +38,13 @@ export const INITIAL_SECTORS: StadiumSector[] = [
   { id: "sec-108", name: "Sector 108 (East Gate)", density: "Low", capacity: 5500, currentCount: 1500, coordinates: "130,210 10,170 60,110 110,150", adjacentSectors: ["sec-107", "sec-101"] }
 ];
 
-export const SCENARIO_PRESETS = [
+export const SCENARIO_PRESETS: readonly ScenarioPreset[] = [
   {
     title: "Turnstile Failure (MetLife)",
     stadium_name: "MetLife Stadium",
     current_match_phase: "Pre-match ingress",
     incident_report: "Turnstile reader system at Gate B failed entirely. Crowds of incoming fans are building rapidly. Families are starting to get pressed against outer security barricades, posing a mild crush hazard.",
-    current_crowd_density_level: "Critical" as const,
+    current_crowd_density_level: "Critical",
     playing_teams: "USA vs Mexico"
   },
   {
@@ -52,7 +52,7 @@ export const SCENARIO_PRESETS = [
     stadium_name: "Los Angeles Stadium",
     current_match_phase: "Half-time",
     incident_report: "An adult fan collapsed in Sector 104 West Gate concourse with breathing difficulties and chest pains. A crowd of bystanders has gathered around, blocking the evacuation stairs and first-aid access routes.",
-    current_crowd_density_level: "Medium" as const,
+    current_crowd_density_level: "Medium",
     playing_teams: "Canada vs Morocco"
   },
   {
@@ -60,7 +60,7 @@ export const SCENARIO_PRESETS = [
     stadium_name: "Atlanta Stadium",
     current_match_phase: "2nd Half - 75th Minute",
     incident_report: "Unauthorized red smoke pyrotechnic ignited in upper Sector 107 South East. Smoke is dense and blowing into exit corridor Gate D, triggering alarms and causing mild respiratory discomfort and minor pushing toward the East Gate.",
-    current_crowd_density_level: "High" as const,
+    current_crowd_density_level: "High",
     playing_teams: "Argentina vs France"
   },
   {
@@ -68,7 +68,7 @@ export const SCENARIO_PRESETS = [
     stadium_name: "Aztec Stadium",
     current_match_phase: "Post-match egress",
     incident_report: "Gate C egress gates suffered localized power blackout, triggering automatic magnetic fail-secure locks. Fans exiting Sector 105 are unable to pass through, creating a heavy bottleneck in the exit corridor with vocal fan frustration.",
-    current_crowd_density_level: "Critical" as const,
+    current_crowd_density_level: "Critical",
     playing_teams: "Mexico vs Germany"
   }
 ];

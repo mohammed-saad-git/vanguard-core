@@ -1,6 +1,7 @@
-import React from "react";
+import { memo, type FormEvent } from "react";
 import { Sliders, Info, AlertCircle, Send, RefreshCw } from "lucide-react";
 import { STADIUMS, MATCH_PHASES, CROWD_DENSITIES, TEAM_PRESETS } from "../data";
+import type { CrowdDensity } from "../types";
 
 interface TelemetryFormProps {
   stadiumName: string;
@@ -9,16 +10,28 @@ interface TelemetryFormProps {
   setCurrentMatchPhase: (val: string) => void;
   playingTeams: string;
   setPlayingTeams: (val: string) => void;
-  currentCrowdDensity: "Low" | "Medium" | "High" | "Critical";
-  setCurrentCrowdDensity: (val: "Low" | "Medium" | "High" | "Critical") => void;
+  currentCrowdDensity: CrowdDensity;
+  setCurrentCrowdDensity: (val: CrowdDensity) => void;
   incidentReport: string;
   setIncidentReport: (val: string) => void;
   errorMsg: string | null;
   isOrchestrating: boolean;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: FormEvent) => void;
 }
 
-export default function TelemetryForm({
+const DENSITY_BUTTON_ACTIVE: Record<CrowdDensity, string> = {
+  Critical: "bg-red-500/25 border-red-500 text-red-200 font-bold",
+  High: "bg-amber-500/25 border-amber-500 text-amber-200 font-bold",
+  Medium: "bg-yellow-500/20 border-yellow-400 text-yellow-100 font-bold",
+  Low: "bg-emerald-500/25 border-emerald-500 text-emerald-200 font-bold"
+};
+
+const DENSITY_BUTTON_IDLE = "border-slate-800 text-slate-400 bg-slate-950/40";
+
+const INPUT_CLASS =
+  "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none";
+
+const TelemetryForm = memo(function TelemetryForm({
   stadiumName,
   setStadiumName,
   currentMatchPhase,
@@ -48,12 +61,7 @@ export default function TelemetryForm({
           <label htmlFor="stadium-name" className="block text-xs font-semibold text-slate-300 uppercase mb-1.5">
             1. Target Stadium
           </label>
-          <select
-            id="stadium-name"
-            value={stadiumName}
-            onChange={(event) => setStadiumName(event.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none"
-          >
+          <select id="stadium-name" value={stadiumName} onChange={(event) => setStadiumName(event.target.value)} className={INPUT_CLASS}>
             {STADIUMS.map((stadium) => (
               <option key={stadium.id} value={stadium.name}>
                 {stadium.name} ({stadium.city})
@@ -67,12 +75,7 @@ export default function TelemetryForm({
             <label htmlFor="match-phase" className="block text-xs font-semibold text-slate-300 uppercase mb-1.5">
               2. Match Phase
             </label>
-            <select
-              id="match-phase"
-              value={currentMatchPhase}
-              onChange={(event) => setCurrentMatchPhase(event.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none"
-            >
+            <select id="match-phase" value={currentMatchPhase} onChange={(event) => setCurrentMatchPhase(event.target.value)} className={INPUT_CLASS}>
               {MATCH_PHASES.map((phase) => (
                 <option key={phase} value={phase}>
                   {phase}
@@ -86,12 +89,7 @@ export default function TelemetryForm({
               <span>3. Playing Teams</span>
               <span className="text-[10px] text-slate-500 lowercase ml-2">(for languages)</span>
             </label>
-            <select
-              id="playing-teams"
-              value={playingTeams}
-              onChange={(event) => setPlayingTeams(event.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:border-rose-500 focus:ring-1 focus:ring-rose-500 outline-none"
-            >
+            <select id="playing-teams" value={playingTeams} onChange={(event) => setPlayingTeams(event.target.value)} className={INPUT_CLASS}>
               {TEAM_PRESETS.map((team) => (
                 <option key={team.teams} value={team.teams}>
                   {team.teams} ({team.languages.split(",")[0]} implied)
@@ -108,14 +106,6 @@ export default function TelemetryForm({
           <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Current crowd density level">
             {CROWD_DENSITIES.map((density) => {
               const isActive = currentCrowdDensity === density;
-              let btnColor = "border-slate-800 text-slate-400 bg-slate-950/40";
-              if (isActive) {
-                if (density === "Critical") btnColor = "bg-red-500/25 border-red-500 text-red-200 font-bold";
-                else if (density === "High") btnColor = "bg-amber-500/25 border-amber-500 text-amber-200 font-bold";
-                else if (density === "Medium") btnColor = "bg-yellow-500/20 border-yellow-400 text-yellow-100 font-bold";
-                else btnColor = "bg-emerald-500/25 border-emerald-500 text-emerald-200 font-bold";
-              }
-
               return (
                 <button
                   key={density}
@@ -123,7 +113,9 @@ export default function TelemetryForm({
                   role="radio"
                   aria-checked={isActive}
                   onClick={() => setCurrentCrowdDensity(density)}
-                  className={`py-2 text-center rounded text-[10px] font-mono border uppercase transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${btnColor}`}
+                  className={`py-2 text-center rounded text-[10px] font-mono border uppercase transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${
+                    isActive ? DENSITY_BUTTON_ACTIVE[density] : DENSITY_BUTTON_IDLE
+                  }`}
                 >
                   {density}
                 </button>
@@ -153,7 +145,9 @@ export default function TelemetryForm({
           <div id="incident-help" className="text-[10px] text-slate-400 mt-1 flex items-start gap-1">
             <Info size={12} className="text-cyan-400 shrink-0 mt-0.5" aria-hidden="true" />
             <span>
-              Try including words like <strong className="text-red-400">medical</strong>, <strong className="text-red-400">crush</strong>, <strong className="text-red-400">fire</strong>, or <strong className="text-red-400">structural failure</strong> to test critical emergency routing logic.
+              Try including words like <strong className="text-red-400">medical</strong>, <strong className="text-red-400">crush</strong>,{" "}
+              <strong className="text-red-400">fire</strong>, or <strong className="text-red-400">structural failure</strong> to test critical
+              emergency routing logic.
             </span>
           </div>
         </div>
@@ -190,4 +184,6 @@ export default function TelemetryForm({
       </form>
     </section>
   );
-}
+});
+
+export default TelemetryForm;

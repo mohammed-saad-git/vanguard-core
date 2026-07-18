@@ -1,7 +1,21 @@
+/**
+ * Shared domain types for the Vanguard-Core stadium operations dashboard.
+ *
+ * All names intentionally mirror the Gemini response schema so server output can
+ * flow directly into the UI without an intermediate mapping layer.
+ */
+
+export type CrowdDensity = "Low" | "Medium" | "High" | "Critical";
+
+export type MatchUrgency = "Immediate" | "Elevated" | "Routine";
+export type ImpactRadius = "Localized Sector" | "Zone Wide" | "Stadium Wide";
+export type IncidentStatus = "success" | "simulation";
+
 export interface SeverityAssessment {
-  priority_level: number; // 1-4
-  urgency: 'Immediate' | 'Elevated' | 'Routine' | string;
-  impact_radius: 'Localized Sector' | 'Zone Wide' | 'Stadium Wide' | string;
+  /** 1 = Critical Emergency, 4 = Routine Inconvenience. */
+  priority_level: number;
+  urgency: MatchUrgency | string;
+  impact_radius: ImpactRadius | string;
 }
 
 export interface TacticalActionPlan {
@@ -24,26 +38,53 @@ export interface IncidentResult {
   operational_justification: string;
 }
 
+export interface TelemetryInput {
+  stadium_name: string;
+  current_match_phase: string;
+  incident_report: string;
+  current_crowd_density_level: CrowdDensity;
+  playing_teams: string;
+}
+
 export interface IncidentHistoryItem {
   id: string;
   timestamp: string;
-  input: {
-    stadium_name: string;
-    current_match_phase: string;
-    incident_report: string;
-    current_crowd_density_level: 'Low' | 'Medium' | 'High' | 'Critical';
-    playing_teams: string;
-  };
+  input: TelemetryInput;
   result: IncidentResult;
-  status: 'success' | 'simulation';
+  status: IncidentStatus;
+}
+
+export interface Stadium {
+  id: string;
+  name: string;
+  city: string;
+  capacity: number;
+}
+
+export interface TeamPreset {
+  teams: string;
+  languages: string;
+}
+
+export interface ScenarioPreset {
+  title: string;
+  stadium_name: string;
+  current_match_phase: string;
+  incident_report: string;
+  current_crowd_density_level: CrowdDensity;
+  playing_teams: string;
 }
 
 export interface StadiumSector {
   id: string;
   name: string;
-  density: 'Low' | 'Medium' | 'High' | 'Critical';
+  density: CrowdDensity;
   capacity: number;
   currentCount: number;
-  coordinates: string; // SVG path or polygon coordinate
-  adjacentSectors: string[]; // Sector IDs we can re-route to
+  /** SVG polygon coordinates as space-separated `x,y` pairs. */
+  coordinates: string;
+  /** Sector IDs we may re-route spectators to. */
+  adjacentSectors: string[];
 }
+
+export type BroadcastLanguage = "english" | "spanish" | "localized_team_language";

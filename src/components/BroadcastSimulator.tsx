@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 import { Volume2, VolumeX, Radio, Monitor, CheckCircle } from "lucide-react";
-import { AutomatedBroadcasts } from "../types";
-
-type BroadcastLanguage = "english" | "spanish" | "localized_team_language";
+import type { AutomatedBroadcasts, BroadcastLanguage } from "../types";
 
 interface BroadcastSimulatorProps {
   broadcasts: AutomatedBroadcasts;
@@ -11,18 +9,27 @@ interface BroadcastSimulatorProps {
   stadiumName: string;
 }
 
-const LANGUAGE_OPTIONS: Array<{ id: BroadcastLanguage; label: string }> = [
+const LANGUAGE_OPTIONS: ReadonlyArray<{ id: BroadcastLanguage; label: string }> = [
   { id: "english", label: "EN (English)" },
   { id: "spanish", label: "ES (Spanish)" },
   { id: "localized_team_language", label: "INTL (Team Native)" }
 ];
 
-export default function BroadcastSimulator({
-  broadcasts,
-  activeLanguage,
-  onChangeLanguage,
-  stadiumName
-}: BroadcastSimulatorProps) {
+function pickVoice(voices: SpeechSynthesisVoice[] | undefined, language: BroadcastLanguage): SpeechSynthesisVoice | null {
+  if (!voices || voices.length === 0) return null;
+
+  switch (language) {
+    case "spanish":
+      return voices.find((voice) => voice.lang.startsWith("es")) ?? null;
+    case "localized_team_language":
+      return voices.find((voice) => !voice.lang.startsWith("en") && !voice.lang.startsWith("es")) ?? null;
+    case "english":
+    default:
+      return voices.find((voice) => voice.lang.startsWith("en")) ?? null;
+  }
+}
+
+function BroadcastSimulator({ broadcasts, activeLanguage, onChangeLanguage, stadiumName }: BroadcastSimulatorProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [synth, setSynth] = useState<SpeechSynthesis | null>(null);
 
@@ -36,7 +43,16 @@ export default function BroadcastSimulator({
     return () => {
       synth?.cancel();
     };
-  }, [synth, broadcasts]);
+  }, [synth]);
+
+  useEffect(() => {
+    return () => {
+      if (synth) {
+        synth.cancel();
+        setIsPlaying(false);
+      }
+    };
+  }, [broadcasts, synth]);
 
   const stopPlayback = () => {
     synth?.cancel();
@@ -60,16 +76,7 @@ export default function BroadcastSimulator({
     if (!textToSpeak) return;
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    const voices = synth.getVoices();
-
-    if (activeLanguage === "spanish") {
-      utterance.voice = voices.find((voice) => voice.lang.startsWith("es")) ?? null;
-    } else if (activeLanguage === "localized_team_language") {
-      utterance.voice = voices.find((voice) => !voice.lang.startsWith("en") && !voice.lang.startsWith("es")) ?? null;
-    } else {
-      utterance.voice = voices.find((voice) => voice.lang.startsWith("en")) ?? null;
-    }
-
+    utterance.voice = pickVoice(synth.getVoices(), activeLanguage);
     utterance.pitch = 0.95;
     utterance.rate = 0.95;
     utterance.onend = () => setIsPlaying(false);
@@ -78,6 +85,10 @@ export default function BroadcastSimulator({
     setIsPlaying(true);
     synth.speak(utterance);
   };
+
+  const headline = broadcasts[activeLanguage] ? `${broadcasts[activeLanguage].split(".")[0]}.` : "Awaiting Operational Plan Ingestion...";
+  const languageLabel = activeLanguage.toUpperCase();
+  const languageScript = broadcasts[activeLanguage] || "Select an incident or run orchestration to view broadcast scripts.";
 
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl space-y-4" id="broadcast-simulator-component" aria-labelledby="broadcast-heading">
@@ -103,7 +114,7 @@ export default function BroadcastSimulator({
             STADIUM ALERT // INSTRUCTIONS
           </span>
           <p className="font-sans font-bold text-slate-200 tracking-tight text-sm sm:text-base leading-snug uppercase">
-            {broadcasts[activeLanguage] ? `${broadcasts[activeLanguage].split(".")[0]}.` : "Awaiting Operational Plan Ingestion..."}
+            {headline}
           </p>
         </div>
       </div>
@@ -112,7 +123,6 @@ export default function BroadcastSimulator({
         <div className="flex gap-1.5" role="tablist" aria-label="Broadcast language">
           {LANGUAGE_OPTIONS.map((option) => {
             const isActive = activeLanguage === option.id;
-
             return (
               <button
                 key={option.id}
@@ -160,12 +170,12 @@ export default function BroadcastSimulator({
       <div className="bg-slate-950 p-3.5 rounded-lg border border-slate-800/80" role="tabpanel">
         <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
           <CheckCircle size={10} className="text-emerald-500" aria-hidden="true" />
-          PA TEXT BROADCAST SCRIPT ({activeLanguage.toUpperCase()}):
+          PA TEXT BROADCAST SCRIPT ({languageLabel}):
         </div>
-        <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
-          {broadcasts[activeLanguage] || "Select an incident or run orchestration to view broadcast scripts."}
-        </p>
+        <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">{languageScript}</p>
       </div>
     </section>
   );
 }
+
+export default memo(BroadcastSimulator);

@@ -1,7 +1,7 @@
-import React, { KeyboardEvent, useMemo } from "react";
+import { memo, useMemo, type KeyboardEvent } from "react";
 import { Shield, AlertTriangle, Users } from "lucide-react";
-import { getPolygonCentroid } from "../lib/orchestration";
-import { StadiumSector } from "../types";
+import { getPolygonCentroid } from "../lib";
+import type { StadiumSector } from "../types";
 
 interface StadiumMapProps {
   sectors: StadiumSector[];
@@ -10,7 +10,39 @@ interface StadiumMapProps {
   onSelectSector?: (sector: StadiumSector) => void;
 }
 
-export default function StadiumMap({
+interface Point {
+  x: number;
+  y: number;
+}
+
+const FALLBACK_POINT: Point = { x: 150, y: 110 };
+
+const DENSITY_STROKE: Record<StadiumSector["density"], string> = {
+  Critical: "fill-red-500/85 stroke-red-600 group-hover:fill-red-600/90 transition-all",
+  High: "fill-amber-500/85 stroke-amber-600 group-hover:fill-amber-600/90 transition-all",
+  Medium: "fill-yellow-400/85 stroke-yellow-500 group-hover:fill-yellow-500/90 transition-all",
+  Low: "fill-emerald-500/80 stroke-emerald-600 group-hover:fill-emerald-600/90 transition-all"
+};
+
+const DENSITY_BADGE: Record<StadiumSector["density"], string> = {
+  Critical: "bg-red-500/20 text-red-400 border-red-500/40",
+  High: "bg-amber-500/20 text-amber-400 border-amber-500/40",
+  Medium: "bg-yellow-400/20 text-yellow-300 border-yellow-400/40",
+  Low: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+};
+
+const LEGEND: ReadonlyArray<{ label: string; color: string }> = [
+  { label: "Low", color: "bg-emerald-500" },
+  { label: "Med", color: "bg-yellow-400" },
+  { label: "High", color: "bg-amber-500" },
+  { label: "Critical", color: "bg-red-500" }
+];
+
+function getActiveStyle(isActive: boolean): string {
+  return isActive ? "fill-rose-600/90 stroke-white stroke-2 animate-pulse" : "";
+}
+
+const StadiumMap = memo(function StadiumMap({
   sectors,
   activeSectorId,
   rerouteToIds = [],
@@ -21,10 +53,9 @@ export default function StadiumMap({
     [sectors]
   );
 
-  const sectorById = useMemo(
-    () => new Map(sectors.map((sector) => [sector.id, sector])),
-    [sectors]
-  );
+  const sectorById = useMemo(() => new Map(sectors.map((sector) => [sector.id, sector])), [sectors]);
+
+  const rerouteSet = useMemo(() => new Set(rerouteToIds), [rerouteToIds]);
 
   const handleSectorKeyDown = (event: KeyboardEvent<SVGGElement | HTMLButtonElement>, sector: StadiumSector) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -33,37 +64,7 @@ export default function StadiumMap({
     }
   };
 
-  const getDensityColor = (density: string, isActive: boolean) => {
-    if (isActive) {
-      return "fill-rose-600/90 stroke-white stroke-2 animate-pulse";
-    }
-
-    switch (density) {
-      case "Critical":
-        return "fill-red-500/85 stroke-red-600 group-hover:fill-red-600/90 transition-all";
-      case "High":
-        return "fill-amber-500/85 stroke-amber-600 group-hover:fill-amber-600/90 transition-all";
-      case "Medium":
-        return "fill-yellow-400/85 stroke-yellow-500 group-hover:fill-yellow-500/90 transition-all";
-      case "Low":
-      default:
-        return "fill-emerald-500/80 stroke-emerald-600 group-hover:fill-emerald-600/90 transition-all";
-    }
-  };
-
-  const getDensityBadgeColor = (density: string) => {
-    switch (density) {
-      case "Critical":
-        return "bg-red-500/20 text-red-400 border-red-500/40";
-      case "High":
-        return "bg-amber-500/20 text-amber-400 border-amber-500/40";
-      case "Medium":
-        return "bg-yellow-400/20 text-yellow-300 border-yellow-400/40";
-      case "Low":
-      default:
-        return "bg-emerald-500/20 text-emerald-400 border-emerald-500/40";
-    }
-  };
+  const activeName = activeSectorId ? sectorById.get(activeSectorId)?.name ?? "the incident zone" : "the incident zone";
 
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-2xl relative overflow-hidden" id="stadium-map-component" aria-labelledby="stadium-map-heading">
@@ -77,15 +78,10 @@ export default function StadiumMap({
         </div>
 
         <div className="flex items-center gap-3 text-xs" aria-label="Crowd density legend">
-          {[
-            ["Low", "bg-emerald-500"],
-            ["Med", "bg-yellow-400"],
-            ["High", "bg-amber-500"],
-            ["Critical", "bg-red-500"]
-          ].map(([label, color]) => (
-            <div key={label} className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded ${color}`} aria-hidden="true" />
-              <span className="text-slate-400">{label}</span>
+          {LEGEND.map((entry) => (
+            <div key={entry.label} className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded ${entry.color}`} aria-hidden="true" />
+              <span className="text-slate-400">{entry.label}</span>
             </div>
           ))}
         </div>
@@ -113,8 +109,9 @@ export default function StadiumMap({
 
             {sectors.map((sector) => {
               const isActive = activeSectorId === sector.id;
-              const isTargetReroute = rerouteToIds.includes(sector.id);
-              const centroid = centroidBySectorId.get(sector.id) ?? { x: 150, y: 110 };
+              const isTargetReroute = rerouteSet.has(sector.id);
+              const centroid = centroidBySectorId.get(sector.id) ?? FALLBACK_POINT;
+              const stroke = getActiveStyle(isActive) || DENSITY_STROKE[sector.density];
 
               return (
                 <g
@@ -128,18 +125,15 @@ export default function StadiumMap({
                 >
                   <polygon
                     points={sector.coordinates}
-                    className={`${getDensityColor(sector.density, isActive)} stroke-[1.2] transition-colors group-focus-visible:stroke-cyan-200 group-focus-visible:stroke-[3]`}
+                    className={`${stroke} stroke-[1.2] transition-colors group-focus-visible:stroke-cyan-200 group-focus-visible:stroke-[3]`}
                   />
 
                   {isTargetReroute && (
                     <polygon
                       points={sector.coordinates}
                       fill="none"
-                      className="stroke-cyan-400 stroke-[2] stroke-dasharray-[4,4] animate-[dash_2s_linear_infinite]"
-                      style={{
-                        strokeDasharray: "4 2",
-                        animation: "dash 1.5s linear infinite"
-                      }}
+                      className="stroke-cyan-400 stroke-[2] animate-[dash_2s_linear_infinite]"
+                      style={{ strokeDasharray: "4 2", animation: "dash 1.5s linear infinite" }}
                     />
                   )}
 
@@ -164,8 +158,8 @@ export default function StadiumMap({
                   const targetSector = sectorById.get(targetId);
                   if (!activeSector || !targetSector) return null;
 
-                  const start = centroidBySectorId.get(activeSector.id) ?? { x: 150, y: 110 };
-                  const end = centroidBySectorId.get(targetSector.id) ?? { x: 150, y: 110 };
+                  const start = centroidBySectorId.get(activeSector.id) ?? FALLBACK_POINT;
+                  const end = centroidBySectorId.get(targetSector.id) ?? FALLBACK_POINT;
 
                   return (
                     <g key={`arrow-${targetId}`}>
@@ -196,38 +190,15 @@ export default function StadiumMap({
             </h3>
 
             <div className="max-h-[170px] overflow-y-auto space-y-2 pr-1 custom-scrollbar" aria-label="Sector status list">
-              {sectors.map((sector) => {
-                const isActive = activeSectorId === sector.id;
-                const percentFull = Math.min(100, Math.round((sector.currentCount / sector.capacity) * 100));
-
-                return (
-                  <button
-                    key={sector.id}
-                    type="button"
-                    onClick={() => onSelectSector?.(sector)}
-                    onKeyDown={(event) => handleSectorKeyDown(event, sector)}
-                    className={`w-full p-2 rounded-lg border text-xs cursor-pointer transition-all flex justify-between items-center text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${
-                      isActive
-                        ? "bg-rose-500/10 border-rose-500/50 text-rose-100 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
-                        : "bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-300"
-                    }`}
-                    aria-current={isActive ? "true" : undefined}
-                  >
-                    <span>
-                      <span className="font-semibold flex items-center gap-1">
-                        <span>{sector.name}</span>
-                        {isActive && <span className="text-[10px] bg-red-500 text-white font-bold px-1.5 py-0.2 rounded uppercase tracking-wider animate-pulse">Affected</span>}
-                      </span>
-                      <span className="block text-[10px] text-slate-400 mt-0.5">
-                        {sector.currentCount.toLocaleString()} / {sector.capacity.toLocaleString()} spectators ({percentFull}% Cap)
-                      </span>
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getDensityBadgeColor(sector.density)}`}>
-                      {sector.density}
-                    </span>
-                  </button>
-                );
-              })}
+              {sectors.map((sector) => (
+                <SectorButton
+                  key={sector.id}
+                  sector={sector}
+                  isActive={activeSectorId === sector.id}
+                  onSelect={onSelectSector}
+                  onKeyDown={handleSectorKeyDown}
+                />
+              ))}
             </div>
           </div>
 
@@ -239,11 +210,8 @@ export default function StadiumMap({
                   GEN-AI REROUTING ENGAGED
                 </div>
                 <p className="text-slate-300 leading-relaxed text-[11px]">
-                  Vanguard-Core is redirecting crowd movement away from{" "}
-                  <span className="font-bold text-red-400">
-                    {sectorById.get(activeSectorId)?.name || "the incident zone"}
-                  </span>{" "}
-                  toward adjacent open paths highlighted on the map.
+                  Vanguard-Core is redirecting crowd movement away from <span className="font-bold text-red-400">{activeName}</span> toward
+                  adjacent open paths highlighted on the map.
                 </p>
               </div>
             ) : (
@@ -257,4 +225,48 @@ export default function StadiumMap({
       </div>
     </section>
   );
+});
+
+interface SectorButtonProps {
+  sector: StadiumSector;
+  isActive: boolean;
+  onSelect?: (sector: StadiumSector) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>, sector: StadiumSector) => void;
 }
+
+const SectorButton = memo(function SectorButton({ sector, isActive, onSelect, onKeyDown }: SectorButtonProps) {
+  const percentFull = Math.min(100, Math.round((sector.currentCount / sector.capacity) * 100));
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect?.(sector)}
+      onKeyDown={(event) => onKeyDown(event, sector)}
+      className={`w-full p-2 rounded-lg border text-xs cursor-pointer transition-all flex justify-between items-center text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${
+        isActive
+          ? "bg-rose-500/10 border-rose-500/50 text-rose-100 shadow-[0_0_10px_rgba(239,68,68,0.15)]"
+          : "bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-300"
+      }`}
+      aria-current={isActive ? "true" : undefined}
+    >
+      <span>
+        <span className="font-semibold flex items-center gap-1">
+          <span>{sector.name}</span>
+          {isActive && (
+            <span className="text-[10px] bg-red-500 text-white font-bold px-1.5 py-0.2 rounded uppercase tracking-wider animate-pulse">
+              Affected
+            </span>
+          )}
+        </span>
+        <span className="block text-[10px] text-slate-400 mt-0.5">
+          {sector.currentCount.toLocaleString()} / {sector.capacity.toLocaleString()} spectators ({percentFull}% Cap)
+        </span>
+      </span>
+      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${DENSITY_BADGE[sector.density]}`}>
+        {sector.density}
+      </span>
+    </button>
+  );
+});
+
+export default StadiumMap;

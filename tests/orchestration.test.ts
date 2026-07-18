@@ -5,12 +5,15 @@ import {
   assessSeverity,
   createSimulationResult,
   getPolygonCentroid,
+  getPriorityBadgeClass,
+  getPriorityLabel,
   getRerouteSectorIds,
   resolveAffectedSectorId,
   sanitizeText,
   updateSectorDensityById,
+  validateIncidentResult,
   validateOrchestrationPayload
-} from "../src/lib/orchestration";
+} from "../src/lib";
 
 describe("orchestration safety rules", () => {
   it("sanitizes script payloads while preserving useful incident text", () => {
@@ -79,11 +82,40 @@ describe("orchestration safety rules", () => {
     assert.equal(INITIAL_SECTORS.find((item) => item.id === "sec-103")?.density, "Low");
   });
 
-  it("routes only to adjacent sectors that are not critical", () => {
+  it("routes only to adjacent sectors that are not blocking (High or Critical)", () => {
     const reroutes = getRerouteSectorIds(INITIAL_SECTORS, "sec-104");
 
     assert.deepEqual(reroutes, ["sec-103", "sec-105"]);
     assert.equal(getRerouteSectorIds(INITIAL_SECTORS, "missing").length, 0);
+    assert.equal(getRerouteSectorIds(INITIAL_SECTORS, undefined).length, 0);
+  });
+
+  it("resolves additional sector identifiers including east and south gates", () => {
+    assert.equal(resolveAffectedSectorId("incident near east gate"), "sec-108");
+    assert.equal(resolveAffectedSectorId("blockage at south gate"), "sec-106");
+    assert.equal(resolveAffectedSectorId("stairwell 4A trip hazard"), "sec-103");
+    assert.equal(resolveAffectedSectorId("queue forming at gate b"), "sec-102");
+  });
+
+  it("escalates respiratory and smoke/pyro incidents to priority one", () => {
+    assert.equal(assessSeverity("breathing difficulties near concourse", "Low").priority, 1);
+    assert.equal(assessSeverity("smoke from pyro near exit", "Medium").priority, 1);
+    assert.equal(assessSeverity("structural crack in stairwell", "High").priority, 1);
+  });
+
+  it("returns deterministic routing for ambiguous reports via default fallback", () => {
+    assert.equal(resolveAffectedSectorId("unrecognised narrative"), "sec-102");
+  });
+
+  it("produces incident ids in the STAD-2026-XXXX format", () => {
+    const id = createSimulationResult({
+      stadium_name: "MetLife Stadium",
+      current_match_phase: "Pre-match ingress",
+      incident_report: "medical alert",
+      current_crowd_density_level: "Low",
+      playing_teams: "USA vs Mexico"
+    }).incident_id;
+    assert.match(id, /^STAD-2026-[A-Z2-9]{4}$/);
   });
 
   it("creates deterministic simulation payloads when an id factory is provided", () => {
@@ -101,10 +133,56 @@ describe("orchestration safety rules", () => {
     assert.equal(result.incident_id, "STAD-2026-TEST");
     assert.equal(result.severity_assessment.priority_level, 1);
     assert.equal(result.automated_broadcasts.english.length > 20, true);
+    assert.equal(result.tactical_action_plan.immediate_directives.length, 3);
+  });
+
+  it("maps priority levels to readable labels and tailwind badges", () => {
+    assert.equal(getPriorityLabel(1), "1 - Critical Emergency");
+    assert.equal(getPriorityLabel(4), "4 - Routine Inconvenience");
+    assert.ok(getPriorityBadgeClass(1).includes("red"));
+    assert.ok(getPriorityBadgeClass(2).includes("amber"));
+    assert.ok(getPriorityBadgeClass(99).includes("cyan"));
+  });
+
+  it("validates the Gemini response shape and rejects malformed payloads", () => {
+    const valid = {
+      incident_id: "STAD-2026-ABCD",
+      severity_assessment: { priority_level: 1, urgency: "Immediate", impact_radius: "Stadium Wide" },
+      tactical_action_plan: {
+        immediate_directives: ["Dispatch medics"],
+        staff_dispatch_assignment: "Deploy 4 medics",
+        crowd_flow_instruction: "Reroute east"
+      },
+      automated_broadcasts: {
+        english: "Stay calm",
+        spanish: "Calma",
+        localized_team_language: "Calme"
+      },
+      operational_justification: "Risk-based"
+    };
+
+    assert.equal(validateIncidentResult(valid)?.incident_id, "STAD-2026-ABCD");
+    assert.equal(validateIncidentResult(null), null);
+    assert.equal(validateIncidentResult({}), null);
+    assert.equal(
+      validateIncidentResult({ ...valid, severity_assessment: { priority_level: 5, urgency: "Immediate", impact_radius: "Stadium Wide" } }),
+      null
+    );
+    assert.equal(
+      validateIncidentResult({ ...valid, tactical_action_plan: { immediate_directives: [], staff_dispatch_assignment: "x", crowd_flow_instruction: "y" } }),
+      null
+    );
+  });
+
+  it("sanitizes telemetry with strict length caps", () => {
+    assert.equal(sanitizeText("hi", 5), "hi");
+    assert.equal(sanitizeText("a".repeat(20), 5).length, 5);
+    assert.equal(sanitizeText("<img src=x onerror=alert(1)>", 100), "");
   });
 
   it("calculates polygon centroids and falls back for invalid coordinates", () => {
     assert.deepEqual(getPolygonCentroid("0,0 10,0 10,10 0,10"), { x: 5, y: 5 });
     assert.deepEqual(getPolygonCentroid("not-a-point"), { x: 150, y: 110 });
+    assert.deepEqual(getPolygonCentroid(""), { x: 150, y: 110 });
   });
 });
